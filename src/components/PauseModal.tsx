@@ -4,6 +4,7 @@
  */
 
 import React from 'react';
+import { PWAInstallButton } from './PWAInstallButton.tsx';
 
 interface PauseModalProps {
   onResume: () => void;
@@ -41,6 +42,8 @@ export const PauseModal: React.FC<PauseModalProps> = ({
           >
             Resume Clearing (Esc / P)
           </button>
+
+          <PWAInstallButton className="w-full justify-center py-2.5" />
 
           <button
             onClick={onToggleMute}

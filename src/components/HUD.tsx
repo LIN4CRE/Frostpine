@@ -10,6 +10,7 @@ import {
   WeatherCondition,
   WeatherForecastItem,
 } from '../game/rules.ts';
+import { PWAInstallButton } from './PWAInstallButton.tsx';
 
 interface HUDProps {
   frostGems: number;
@@ -65,8 +66,28 @@ export const HUD: React.FC<HUDProps> = ({
 
   const isSevere = weather.type === 'blizzard' || weather.type === 'freezing_rain';
 
+  const [isCompactLandscape, setIsCompactLandscape] = React.useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.innerHeight < 550;
+  });
+
+  React.useEffect(() => {
+    const onResize = () => {
+      setIsCompactLandscape(window.innerHeight < 550);
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
   return (
-    <div className="fixed inset-0 pointer-events-none z-30 flex flex-col justify-between p-3 md:p-6 text-white select-none">
+    <div
+      className="fixed inset-0 pointer-events-none z-30 flex flex-col justify-between p-2 sm:p-3 md:p-6 text-white select-none"
+      style={{
+        paddingTop: 'max(0.5rem, env(safe-area-inset-top, 0px))',
+        paddingLeft: 'max(0.5rem, env(safe-area-inset-left, 0px))',
+        paddingRight: 'max(0.5rem, env(safe-area-inset-right, 0px))',
+      }}
+    >
       {/* Top Bar: Left Status & Right Utilities */}
       <div className="flex items-start justify-between w-full">
         {/* Top-Left Status Cluster */}
@@ -145,7 +166,9 @@ export const HUD: React.FC<HUDProps> = ({
         </div>
 
         {/* Top-Right Control Cluster */}
-        <div className="flex items-center gap-2 pointer-events-auto">
+        <div className="flex items-center gap-1.5 sm:gap-2 pointer-events-auto">
+          <PWAInstallButton className="hidden sm:flex" />
+
           {/* Speedometer Readout */}
           <div className="bg-slate-900/90 px-3.5 py-1.5 rounded-xl border border-slate-700/80 flex items-baseline gap-1.5 shadow-md">
             <span className="text-lg font-black tabular-nums tracking-tight text-white font-mono">
@@ -156,10 +179,10 @@ export const HUD: React.FC<HUDProps> = ({
             </span>
           </div>
 
-          {/* Blade Toggle Button */}
+          {/* Blade Toggle Button (Desktop top-bar; on mobile it is in TouchControls) */}
           <button
             onClick={onToggleBlade}
-            className={`px-3 py-2 rounded-xl border font-bold text-xs flex items-center gap-2 transition-all cursor-pointer ${
+            className={`hidden lg:flex px-3 py-2 rounded-xl border font-bold text-xs items-center gap-2 transition-all cursor-pointer ${
               vehicle.bladeLowered
                 ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md'
                 : 'bg-slate-900/85 text-slate-300 border-slate-700 hover:text-white'
@@ -167,15 +190,15 @@ export const HUD: React.FC<HUDProps> = ({
             title="Toggle Plough Blade (Space)"
             aria-label="Toggle Plough Blade"
           >
-            <span className="hidden sm:inline">{vehicle.bladeLowered ? 'BLADE: DOWN' : 'BLADE: UP'}</span>
+            <span>{vehicle.bladeLowered ? 'BLADE: DOWN' : 'BLADE: UP'}</span>
             <kbd className="text-[9px] bg-slate-950/40 px-1 py-0.5 rounded text-slate-100 font-mono">Space</kbd>
           </button>
 
-          {/* Salt Spreader Toggle */}
+          {/* Salt Spreader Toggle (Desktop top-bar) */}
           {vehicle.upgrades.saltSpreaderLevel > 0 && (
             <button
               onClick={onToggleSalt}
-              className={`px-3 py-2 rounded-xl border font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer ${
+              className={`hidden lg:flex px-3 py-2 rounded-xl border font-bold text-xs items-center gap-1.5 transition-all cursor-pointer ${
                 vehicle.saltSpreaderActive
                   ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-md'
                   : 'bg-slate-900/85 text-slate-300 border-slate-700 hover:text-white'
@@ -259,17 +282,23 @@ export const HUD: React.FC<HUDProps> = ({
         </div>
       )}
 
-      {/* Minimap Radar (Right side above bottom dock) */}
-      <div className="fixed right-4 bottom-24 pointer-events-auto z-30">
-        <div className="bg-slate-900/90 p-2 rounded-2xl border border-slate-700/80 shadow-lg flex flex-col items-center">
-          <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+      {/* Minimap Radar (Responsive placement: Top-Right on mobile landscape, Bottom-Right on desktop) */}
+      <div
+        className={`fixed right-3 pointer-events-auto z-20 md:z-30 transition-all ${
+          isCompactLandscape
+            ? 'top-14 bottom-auto'
+            : 'top-14 sm:top-18 lg:top-auto lg:right-4 lg:bottom-28'
+        }`}
+      >
+        <div className="bg-slate-900/90 p-1.5 sm:p-2 rounded-2xl border border-slate-700/80 shadow-lg flex flex-col items-center">
+          <div className="text-[8px] sm:text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-0.5 sm:mb-1">
             Valley Radar
           </div>
-          <div className="relative w-24 h-24 bg-slate-950 rounded-xl border border-slate-800 overflow-hidden">
-            <div className="absolute left-1/2 top-1/2 w-3 h-3 bg-slate-700 rounded-full -translate-x-1/2 -translate-y-1/2" />
+          <div className="relative w-20 h-20 sm:w-24 sm:h-24 bg-slate-950 rounded-xl border border-slate-800 overflow-hidden">
+            <div className="absolute left-1/2 top-1/2 w-2.5 h-2.5 bg-slate-700 rounded-full -translate-x-1/2 -translate-y-1/2" />
             {cabins.map((c) => {
-              const mx = ((c.x + 54) / 108) * 96;
-              const my = ((c.z + 54) / 108) * 96;
+              const mx = ((c.x + 54) / 108) * 100;
+              const my = ((c.z + 54) / 108) * 100;
               return (
                 <div
                   key={c.id}
@@ -280,19 +309,19 @@ export const HUD: React.FC<HUDProps> = ({
                       ? 'bg-amber-400 ring-1 ring-amber-300/50'
                       : 'bg-slate-600'
                   }`}
-                  style={{ left: mx, top: my }}
+                  style={{ left: `${mx}%`, top: `${my}%` }}
                   title={`${c.name} (${c.unlockedDecoration ? 'Restored & Decorated' : c.discovered ? 'Rescued' : 'Snowed In'})`}
                 />
               );
             })}
             {/* Player Plough Marker */}
             {(() => {
-              const px = ((vehicle.x + 54) / 108) * 96;
-              const py = ((vehicle.z + 54) / 108) * 96;
+              const px = ((vehicle.x + 54) / 108) * 100;
+              const py = ((vehicle.z + 54) / 108) * 100;
               return (
                 <div
                   className="absolute w-3 h-3 bg-sky-400 rounded-full border border-white -translate-x-1/2 -translate-y-1/2 shadow"
-                  style={{ left: px, top: py }}
+                  style={{ left: `${px}%`, top: `${py}%` }}
                 />
               );
             })()}

@@ -45,6 +45,7 @@ import { BottomDock } from './components/BottomDock.tsx';
 import { CabinDecorationMode } from './components/CabinDecorationMode.tsx';
 import { PauseModal } from './components/PauseModal.tsx';
 import { VictoryModal } from './components/VictoryModal.tsx';
+import { TouchControls, TouchInputState } from './components/TouchControls.tsx';
 
 type GameState = 'title' | 'playing' | 'paused' | 'gameover';
 type CameraViewMode = 'follow' | 'cab' | 'bird';
@@ -78,6 +79,26 @@ export default function App() {
   const [missions, setMissions] = useState<Mission[]>(INITIAL_MISSIONS);
   const [decoratingCabin, setDecoratingCabin] = useState<Cabin | null>(null);
   const [notification, setNotification] = useState<string | null>(null);
+  const [isTouchDevice, setIsTouchDevice] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return (
+      'ontouchstart' in window ||
+      (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0) ||
+      window.innerWidth < 1024
+    );
+  });
+
+  useEffect(() => {
+    const checkTouch = () => {
+      const hasTouch =
+        'ontouchstart' in window ||
+        (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0) ||
+        window.innerWidth < 1024;
+      setIsTouchDevice(hasTouch);
+    };
+    window.addEventListener('resize', checkTouch);
+    return () => window.removeEventListener('resize', checkTouch);
+  }, []);
 
   // Vehicle Physics exposed to React HUD
   const [vehicleState, setVehicleState] = useState<VehiclePhysics>({
@@ -114,6 +135,13 @@ export default function App() {
   const townDecorMeshesRef = useRef<Map<string, THREE.Group>>(new Map());
 
   const keysPressedRef = useRef<Set<string>>(new Set());
+  const touchInputsRef = useRef<TouchInputState>({
+    forward: false,
+    backward: false,
+    left: false,
+    right: false,
+    boost: false,
+  });
   const cameraModeRef = useRef<CameraViewMode>('follow');
   const gameStateRef = useRef<GameState>('title');
   const atmosphereRef = useRef<AtmospherePreset>('twilight');
@@ -373,12 +401,15 @@ export default function App() {
       // Active Gameplay Simulation
       if (state === 'playing') {
         const keys = keysPressedRef.current;
-        const forward = keys.has('KeyW') || keys.has('ArrowUp');
-        const backward = keys.has('KeyS') || keys.has('ArrowDown');
-        const left = keys.has('KeyA') || keys.has('ArrowLeft');
-        const right = keys.has('KeyD') || keys.has('ArrowRight');
-        const brake = keys.has('Space') && !vehicleRef.current.bladeLowered;
-        const boost = keys.has('ShiftLeft') || keys.has('ShiftRight');
+        const touch = touchInputsRef.current;
+        const forward = keys.has('KeyW') || keys.has('ArrowUp') || touch.forward;
+        const backward = keys.has('KeyS') || keys.has('ArrowDown') || touch.backward;
+        const left = keys.has('KeyA') || keys.has('ArrowLeft') || touch.left;
+        const right = keys.has('KeyD') || keys.has('ArrowRight') || touch.right;
+        const brake =
+          (keys.has('Space') && !vehicleRef.current.bladeLowered) ||
+          (touch.backward && vehicleRef.current.speed > 0.4);
+        const boost = keys.has('ShiftLeft') || keys.has('ShiftRight') || touch.boost;
 
         const curWeather = weatherRef.current;
 
@@ -909,6 +940,31 @@ export default function App() {
           onCycleCamera={handleCycleCamera}
           onTogglePause={() => setGameState('paused')}
           notification={notification}
+        />
+      )}
+
+      {/* Adaptive Touch Controls for Mobile Phones & Tablets */}
+      {gameState === 'playing' && isTouchDevice && !decoratingCabin && (
+        <TouchControls
+          vehicleState={vehicleState}
+          nearestCabin={
+            cabins.find((c) => Math.hypot(c.x - vehicleState.x, c.z - vehicleState.z) < 18) || null
+          }
+          nearestCabinDistance={
+            cabins.reduce((minDist, c) => {
+              const d = Math.hypot(c.x - vehicleState.x, c.z - vehicleState.z);
+              return Math.min(minDist, d);
+            }, 999)
+          }
+          cameraMode={cameraMode}
+          onInputChange={(inputs) => {
+            touchInputsRef.current = inputs;
+          }}
+          onToggleBlade={handleToggleBlade}
+          onToggleSalt={handleToggleSalt}
+          onCycleCamera={handleCycleCamera}
+          onTogglePause={() => setGameState('paused')}
+          onInteractCabin={(cabin) => setDecoratingCabin(cabin)}
         />
       )}
 

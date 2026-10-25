@@ -50,7 +50,9 @@ export const BottomDock: React.FC<BottomDockProps> = ({
   onPurchaseUpgrade,
   onSaveGame,
 }) => {
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth < 1024
+  );
   const [activeTab, setActiveTab] = useState<'missions' | 'contracts' | 'cabins' | 'upgrades' | 'decor' | 'atmosphere'>('missions');
   const [selectedSlotId, setSelectedSlotId] = useState<string>(decorSlots[0]?.id || '');
   const [savedBadge, setSavedBadge] = useState(false);
@@ -126,7 +128,7 @@ export const BottomDock: React.FC<BottomDockProps> = ({
 
         {/* Tab 1: Missions */}
         {activeTab === 'missions' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[38vh] sm:max-h-48 overflow-y-auto pr-1">
             {missions.map((m) => (
               <div
                 key={m.id}
@@ -173,7 +175,7 @@ export const BottomDock: React.FC<BottomDockProps> = ({
 
         {/* Tab 2: Weather Contracts */}
         {activeTab === 'contracts' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 max-h-48 overflow-y-auto pr-1">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 max-h-[38vh] sm:max-h-48 overflow-y-auto pr-1">
             {contracts.map((c) => {
               const minutes = Math.floor(c.timeRemaining / 60);
               const seconds = Math.floor(c.timeRemaining % 60);
@@ -217,7 +219,7 @@ export const BottomDock: React.FC<BottomDockProps> = ({
 
         {/* Tab 3: Hidden Cabins & Restoration */}
         {activeTab === 'cabins' && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 max-h-48 overflow-y-auto pr-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 max-h-[38vh] sm:max-h-48 overflow-y-auto pr-1">
             {cabins.map((cabin) => (
               <div
                 key={cabin.id}
@@ -269,7 +271,7 @@ export const BottomDock: React.FC<BottomDockProps> = ({
 
         {/* Tab 4: Vehicle Upgrades Garage */}
         {activeTab === 'upgrades' && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5 max-h-48 overflow-y-auto pr-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5 max-h-[38vh] sm:max-h-48 overflow-y-auto pr-1">
             {/* Blade Upgrade */}
             <div className="bg-slate-950/70 p-3 rounded-xl border border-slate-800 flex flex-col justify-between gap-2">
               <div>
