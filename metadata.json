@@ -1,0 +1,6 @@
+{
+  "name": "Frostpine Snow Plough: Cozy Holiday Village",
+  "description": "Clear snowy mountain roads with your cozy snow plough, rescue hidden festive cabins, customize chalet exteriors, and decorate the holiday village with warm lights and winter furniture.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
