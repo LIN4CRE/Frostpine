@@ -1,11 +1,6 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { SnowGrid } from '../rules.ts';
+import { SnowGrid, WeatherCondition } from '../rules.ts';
 import { createCobblestoneTexture, createSnowBumpTexture } from './textures.ts';
 
 export type AtmospherePreset = 'twilight' | 'sunset' | 'aurora' | 'morning';
@@ -22,8 +17,9 @@ export interface EnvironmentScene {
   dirLight: THREE.DirectionalLight;
   hemiLight: THREE.HemisphereLight;
   setAtmosphere: (preset: AtmospherePreset) => void;
+  applyWeatherCondition: (weather: WeatherCondition) => void;
   updateSnowMesh: (grid: SnowGrid) => void;
-  updateFallingSnow: (dt: number, centerPos: THREE.Vector3) => void;
+  updateFallingSnow: (dt: number, centerPos: THREE.Vector3, weather: WeatherCondition) => void;
 }
 
 export function setupEnvironment(container: HTMLDivElement): EnvironmentScene {
@@ -173,18 +169,37 @@ export function setupEnvironment(container: HTMLDivElement): EnvironmentScene {
         const gridIdx = gz * gridRes + gx;
         const depth = grid.depths[gridIdx];
         const isRoad = grid.isRoad[gridIdx];
+        const type = grid.types[gridIdx];
+        const ice = grid.iceGlaze[gridIdx];
 
-        // Deep snow has physical height up to 0.75m! Cleared path drops down flush with road
-        const height = depth * 0.72;
+        // Physical height reflecting both snow depth and pushed snowbanks
+        const height = depth * 0.75;
         posArr[vIdx * 3 + 1] = height;
 
-        // If road is cleared (depth < 0.25), darken snow vertex color to reveal cobblestone
-        if (isRoad && depth < 0.28) {
-          const t = depth / 0.28;
-          colArr[vIdx * 3] = 0.45 + t * 0.55;
-          colArr[vIdx * 3 + 1] = 0.45 + t * 0.55;
-          colArr[vIdx * 3 + 2] = 0.5 + t * 0.5;
+        // Vertex coloring based on surface state:
+        if (isRoad && depth < 0.22 && ice < 0.2) {
+          // Cleared cobblestone road
+          const t = depth / 0.22;
+          colArr[vIdx * 3] = 0.42 + t * 0.58;
+          colArr[vIdx * 3 + 1] = 0.42 + t * 0.58;
+          colArr[vIdx * 3 + 2] = 0.48 + t * 0.52;
+        } else if (ice > 0.3) {
+          // Black ice / glazed road: cool silver-cyan specular tint
+          colArr[vIdx * 3] = 0.72;
+          colArr[vIdx * 3 + 1] = 0.88;
+          colArr[vIdx * 3 + 2] = 0.98;
+        } else if (type === 2) {
+          // Wet heavy snow: slightly darker grayish slush
+          colArr[vIdx * 3] = 0.86;
+          colArr[vIdx * 3 + 1] = 0.88;
+          colArr[vIdx * 3 + 2] = 0.92;
+        } else if (type === 1) {
+          // Compacted berm: dense snowy white
+          colArr[vIdx * 3] = 0.95;
+          colArr[vIdx * 3 + 1] = 0.96;
+          colArr[vIdx * 3 + 2] = 0.98;
         } else {
+          // Fresh powder snow: pristine white
           colArr[vIdx * 3] = 1.0;
           colArr[vIdx * 3 + 1] = 1.0;
           colArr[vIdx * 3 + 2] = 1.0;
@@ -299,23 +314,58 @@ export function setupEnvironment(container: HTMLDivElement): EnvironmentScene {
   const fallingSnow = new THREE.Points(snowPartGeo, snowPartMat);
   scene.add(fallingSnow);
 
-  const updateFallingSnow = (dt: number, centerPos: THREE.Vector3) => {
+  const updateFallingSnow = (dt: number, centerPos: THREE.Vector3, weather: WeatherCondition) => {
     const posAttr = snowPartGeo.attributes.position as THREE.BufferAttribute;
     const arr = posAttr.array as Float32Array;
 
+    // Wind components
+    const windSpeedFactor = weather.windSpeed / 15;
+    const windX = Math.cos(weather.windAngle) * 3.5 * windSpeedFactor;
+    const windZ = Math.sin(weather.windAngle) * 3.5 * windSpeedFactor;
+    const fallSpeedMult = weather.type === 'blizzard' ? 2.2 : weather.type === 'heavy_snow' ? 1.6 : 1.0;
+
     for (let i = 0; i < snowCount; i++) {
-      arr[i * 3] += snowVelocities[i * 3] * dt;
-      arr[i * 3 + 1] += snowVelocities[i * 3 + 1] * dt;
-      arr[i * 3 + 2] += snowVelocities[i * 3 + 2] * dt;
+      arr[i * 3] += (snowVelocities[i * 3] + windX) * dt;
+      arr[i * 3 + 1] += snowVelocities[i * 3 + 1] * fallSpeedMult * dt;
+      arr[i * 3 + 2] += (snowVelocities[i * 3 + 2] + windZ) * dt;
 
       // Wrap around player position
       if (arr[i * 3 + 1] < 0.1) {
         arr[i * 3 + 1] = 28 + Math.random() * 4;
-        arr[i * 3] = centerPos.x + (Math.random() - 0.5) * 70;
-        arr[i * 3 + 2] = centerPos.z + (Math.random() - 0.5) * 70;
+        arr[i * 3] = centerPos.x + (Math.random() - 0.5) * 80;
+        arr[i * 3 + 2] = centerPos.z + (Math.random() - 0.5) * 80;
       }
     }
     posAttr.needsUpdate = true;
+  };
+
+  // Weather condition visual updater
+  const applyWeatherCondition = (weather: WeatherCondition) => {
+    if (weather.type === 'blizzard') {
+      scene.fog = new THREE.FogExp2(0x181e2e, 0.038);
+      dirLight.intensity = 0.8;
+      hemiLight.intensity = 0.45;
+      (fallingSnow.material as THREE.PointsMaterial).size = 0.42;
+      (fallingSnow.material as THREE.PointsMaterial).opacity = 0.95;
+    } else if (weather.type === 'heavy_snow') {
+      scene.fog = new THREE.FogExp2(0x1e1b4b, 0.024);
+      dirLight.intensity = 1.1;
+      hemiLight.intensity = 0.55;
+      (fallingSnow.material as THREE.PointsMaterial).size = 0.35;
+      (fallingSnow.material as THREE.PointsMaterial).opacity = 0.88;
+    } else if (weather.type === 'freezing_rain') {
+      scene.fog = new THREE.FogExp2(0x1e293b, 0.018);
+      dirLight.intensity = 1.3;
+      hemiLight.intensity = 0.6;
+      (fallingSnow.material as THREE.PointsMaterial).size = 0.22;
+      (fallingSnow.material as THREE.PointsMaterial).opacity = 0.6;
+    } else {
+      scene.fog = new THREE.FogExp2(0x1e1b4b, 0.015);
+      dirLight.intensity = 1.6;
+      hemiLight.intensity = 0.7;
+      (fallingSnow.material as THREE.PointsMaterial).size = 0.28;
+      (fallingSnow.material as THREE.PointsMaterial).opacity = 0.8;
+    }
   };
 
   // 11. Atmosphere Presets
@@ -386,6 +436,7 @@ export function setupEnvironment(container: HTMLDivElement): EnvironmentScene {
     dirLight,
     hemiLight,
     setAtmosphere,
+    applyWeatherCondition,
     updateSnowMesh,
     updateFallingSnow,
   };

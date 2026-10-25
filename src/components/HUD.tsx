@@ -4,7 +4,12 @@
  */
 
 import React from 'react';
-import { Cabin, VehiclePhysics } from '../game/rules.ts';
+import {
+  Cabin,
+  VehiclePhysics,
+  WeatherCondition,
+  WeatherForecastItem,
+} from '../game/rules.ts';
 
 interface HUDProps {
   frostGems: number;
@@ -15,12 +20,25 @@ interface HUDProps {
   isMuted: boolean;
   cameraMode: string;
   activeMissionTitle: string;
+  weather: WeatherCondition;
+  forecast: WeatherForecastItem[];
   onToggleBlade: () => void;
+  onToggleSalt: () => void;
   onToggleMute: () => void;
   onCycleCamera: () => void;
   onTogglePause: () => void;
   notification: string | null;
 }
+
+const WEATHER_ICONS: Record<string, string> = {
+  clear: '☀️',
+  light_snow: '❄️',
+  heavy_snow: '🌨️',
+  blizzard: '🌪️',
+  freezing_rain: '🌧️',
+  high_winds: '💨',
+  thaw_refreeze: '🧊',
+};
 
 export const HUD: React.FC<HUDProps> = ({
   frostGems,
@@ -30,48 +48,77 @@ export const HUD: React.FC<HUDProps> = ({
   isMuted,
   cameraMode,
   activeMissionTitle,
+  weather,
+  forecast,
   onToggleBlade,
+  onToggleSalt,
   onToggleMute,
   onCycleCamera,
   onTogglePause,
   notification,
 }) => {
-  const speedDisplay = Math.abs(Math.round(vehicle.speed * 3.6)); // km/h approximation
+  const speedDisplay = Math.abs(Math.round(vehicle.speed * 3.6));
+  const nextEvent = forecast[0];
+  const nextMinutes = nextEvent ? Math.floor(nextEvent.expectedInSeconds / 60) : 0;
+  const nextSeconds = nextEvent ? Math.floor(nextEvent.expectedInSeconds % 60) : 0;
+  const nextTimeStr = `${nextMinutes}:${nextSeconds.toString().padStart(2, '0')}`;
+
+  const isSevere = weather.type === 'blizzard' || weather.type === 'freezing_rain';
 
   return (
-    <div className="fixed inset-0 pointer-events-none z-30 flex flex-col justify-between p-4 md:p-6 text-white select-none">
+    <div className="fixed inset-0 pointer-events-none z-30 flex flex-col justify-between p-3 md:p-6 text-white select-none">
       {/* Top Bar: Left Status & Right Utilities */}
       <div className="flex items-start justify-between w-full">
         {/* Top-Left Status Cluster */}
-        <div className="flex flex-col gap-2.5 max-w-xs md:max-w-sm pointer-events-auto">
-          {/* Frost Gems Counter */}
-          <div className="flex items-center gap-3 bg-slate-900/85 px-4 py-2 rounded-xl border border-amber-500/30 shadow-md">
-            <svg
-              className="w-6 h-6 text-amber-400 shrink-0"
-              viewBox="0 0 24 24"
-              fill="currentColor"
+        <div className="flex flex-col gap-2 max-w-xs md:max-w-sm pointer-events-auto">
+          {/* Frost Gems Counter & Weather Forecast Banner */}
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 bg-slate-900/90 px-3.5 py-1.5 rounded-xl border border-amber-500/30 shadow-md">
+              <span className="text-amber-400 font-bold text-lg">💎</span>
+              <div>
+                <div className="text-[9px] font-bold uppercase tracking-wider text-amber-300/80">Frost Gems</div>
+                <div className="text-lg font-black tabular-nums tracking-tight text-amber-200">
+                  {frostGems}
+                </div>
+              </div>
+            </div>
+
+            {/* Weather Pill */}
+            <div
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border shadow-md ${
+                isSevere
+                  ? 'bg-red-950/80 border-red-500/50 text-red-200 ring-1 ring-red-400/40'
+                  : 'bg-slate-900/90 border-sky-500/30 text-sky-200'
+              }`}
             >
-              <polygon points="12 2 15 8 22 9 17 14 18 21 12 17 6 21 7 14 2 9 9 8" />
-            </svg>
-            <div>
-              <div className="text-[10px] font-bold uppercase tracking-wider text-amber-300/80">Frost Gems</div>
-              <div className="text-xl font-black tabular-nums tracking-tight text-amber-200">
-                {frostGems}
+              <span className="text-lg">{WEATHER_ICONS[weather.type] || '❄️'}</span>
+              <div>
+                <div className="text-[9px] font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                  <span>{weather.name}</span>
+                  <span className="font-mono text-amber-300 tabular-nums">{weather.temperature.toFixed(1)}°C</span>
+                </div>
+                <div className="text-[10px] text-slate-400 font-medium flex items-center gap-2">
+                  <span>Wind {weather.windSpeed} km/h</span>
+                  <span>·</span>
+                  <span className={weather.tractionMultiplier < 0.6 ? 'text-red-300 font-bold' : 'text-slate-300'}>
+                    Grip {Math.round(weather.tractionMultiplier * 100)}%
+                  </span>
+                </div>
               </div>
             </div>
           </div>
 
           {/* Road Clearance Progress Bar */}
-          <div className="bg-slate-900/85 px-4 py-2.5 rounded-xl border border-sky-500/25 shadow-md">
+          <div className="bg-slate-900/90 px-3.5 py-2 rounded-xl border border-sky-500/25 shadow-md">
             <div className="flex justify-between items-center text-xs mb-1">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-sky-300">
-                Roadway Cleared
+              <span className="text-[10px] font-bold uppercase tracking-wider text-sky-300">
+                Roadway Network Cleared
               </span>
-              <span className="font-mono font-bold text-sky-200 tabular-nums">
+              <span className="font-mono font-bold text-sky-200 tabular-nums text-xs">
                 {roadClearancePct}%
               </span>
             </div>
-            <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+            <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
               <div
                 className="bg-gradient-to-r from-sky-400 to-amber-400 h-full rounded-full transition-all duration-300"
                 style={{ width: `${Math.min(100, roadClearancePct)}%` }}
@@ -79,10 +126,19 @@ export const HUD: React.FC<HUDProps> = ({
             </div>
           </div>
 
-          {/* Active Mission Pill */}
-          <div className="bg-slate-900/80 px-3.5 py-1.5 rounded-lg border border-slate-700/60 text-xs flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
-            <span className="truncate text-slate-200 font-medium">
+          {/* Forecast Teaser & Active Mission */}
+          {nextEvent && (
+            <div className="bg-slate-950/80 px-3 py-1 rounded-lg border border-slate-800 text-[10px] flex items-center justify-between text-slate-300">
+              <span className="text-amber-300 font-semibold truncate">
+                Forecast: {nextEvent.name}
+              </span>
+              <span className="font-mono text-slate-400 shrink-0 ml-2">in {nextTimeStr}</span>
+            </div>
+          )}
+
+          <div className="bg-slate-900/80 px-3 py-1 rounded-lg border border-slate-700/60 text-xs flex items-center gap-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+            <span className="truncate text-slate-200 text-[11px] font-medium">
               {activeMissionTitle}
             </span>
           </div>
@@ -91,7 +147,7 @@ export const HUD: React.FC<HUDProps> = ({
         {/* Top-Right Control Cluster */}
         <div className="flex items-center gap-2 pointer-events-auto">
           {/* Speedometer Readout */}
-          <div className="bg-slate-900/85 px-3.5 py-1.5 rounded-xl border border-slate-700/80 flex items-baseline gap-1.5 shadow-md">
+          <div className="bg-slate-900/90 px-3.5 py-1.5 rounded-xl border border-slate-700/80 flex items-baseline gap-1.5 shadow-md">
             <span className="text-lg font-black tabular-nums tracking-tight text-white font-mono">
               {speedDisplay}
             </span>
@@ -111,13 +167,26 @@ export const HUD: React.FC<HUDProps> = ({
             title="Toggle Plough Blade (Space)"
             aria-label="Toggle Plough Blade"
           >
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M4 14l6 6 10-10" />
-              <path d="M4 8l16 0" />
-            </svg>
             <span className="hidden sm:inline">{vehicle.bladeLowered ? 'BLADE: DOWN' : 'BLADE: UP'}</span>
             <kbd className="text-[9px] bg-slate-950/40 px-1 py-0.5 rounded text-slate-100 font-mono">Space</kbd>
           </button>
+
+          {/* Salt Spreader Toggle */}
+          {vehicle.upgrades.saltSpreaderLevel > 0 && (
+            <button
+              onClick={onToggleSalt}
+              className={`px-3 py-2 rounded-xl border font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer ${
+                vehicle.saltSpreaderActive
+                  ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-md'
+                  : 'bg-slate-900/85 text-slate-300 border-slate-700 hover:text-white'
+              }`}
+              title="Toggle Salt/Grit Spreader (V)"
+              aria-label="Toggle Salt Spreader"
+            >
+              <span>🧂 {vehicle.saltSpreaderActive ? 'SALT: ON' : 'SALT: OFF'}</span>
+              <kbd className="text-[9px] bg-slate-950/40 px-1 py-0.5 rounded text-slate-100 font-mono">V</kbd>
+            </button>
+          )}
 
           {/* Camera Mode Toggle */}
           <button
@@ -170,9 +239,21 @@ export const HUD: React.FC<HUDProps> = ({
         </div>
       </div>
 
+      {/* Severe Weather Warning Banner */}
+      {isSevere && (
+        <div className="self-center mt-2 bg-red-950/90 text-red-100 font-bold px-5 py-1.5 rounded-full border border-red-500/60 shadow-xl text-xs flex items-center gap-2 animate-pulse pointer-events-auto">
+          <span>⚠️</span>
+          <span>
+            {weather.type === 'blizzard'
+              ? 'BLIZZARD IN PROGRESS: Severe Drifts & Low Visibility'
+              : 'FREEZING RAIN WARNING: Black Ice Detected — Reduce Speed!'}
+          </span>
+        </div>
+      )}
+
       {/* Floating Center Notification Toast */}
       {notification && (
-        <div className="self-center my-auto bg-gradient-to-r from-amber-600/90 to-amber-700/90 text-slate-950 font-bold px-6 py-2.5 rounded-full shadow-xl border border-amber-300/40 text-sm md:text-base animate-bounce flex items-center gap-2">
+        <div className="self-center my-auto bg-gradient-to-r from-amber-600/90 to-amber-700/90 text-slate-950 font-bold px-6 py-2.5 rounded-full shadow-xl border border-amber-300/40 text-sm md:text-base flex items-center gap-2 pointer-events-auto">
           <span>✨</span>
           <span>{notification}</span>
         </div>
@@ -185,9 +266,7 @@ export const HUD: React.FC<HUDProps> = ({
             Valley Radar
           </div>
           <div className="relative w-24 h-24 bg-slate-950 rounded-xl border border-slate-800 overflow-hidden">
-            {/* Center Plaza */}
             <div className="absolute left-1/2 top-1/2 w-3 h-3 bg-slate-700 rounded-full -translate-x-1/2 -translate-y-1/2" />
-            {/* Cabins markers */}
             {cabins.map((c) => {
               const mx = ((c.x + 54) / 108) * 96;
               const my = ((c.z + 54) / 108) * 96;
@@ -195,10 +274,14 @@ export const HUD: React.FC<HUDProps> = ({
                 <div
                   key={c.id}
                   className={`absolute w-2.5 h-2.5 rounded-full -translate-x-1/2 -translate-y-1/2 transition-all ${
-                    c.discovered ? 'bg-amber-400 ring-2 ring-amber-300/50' : 'bg-slate-600'
+                    c.unlockedDecoration
+                      ? 'bg-emerald-400 ring-2 ring-emerald-300/50'
+                      : c.discovered
+                      ? 'bg-amber-400 ring-1 ring-amber-300/50'
+                      : 'bg-slate-600'
                   }`}
                   style={{ left: mx, top: my }}
-                  title={`${c.name} (${c.discovered ? 'Rescued' : 'Hidden'})`}
+                  title={`${c.name} (${c.unlockedDecoration ? 'Restored & Decorated' : c.discovered ? 'Rescued' : 'Snowed In'})`}
                 />
               );
             })}
@@ -208,7 +291,7 @@ export const HUD: React.FC<HUDProps> = ({
               const py = ((vehicle.z + 54) / 108) * 96;
               return (
                 <div
-                  className="absolute w-3 h-3 bg-emerald-400 rounded-full border border-white -translate-x-1/2 -translate-y-1/2 shadow"
+                  className="absolute w-3 h-3 bg-sky-400 rounded-full border border-white -translate-x-1/2 -translate-y-1/2 shadow"
                   style={{ left: px, top: py }}
                 />
               );

@@ -1,15 +1,12 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import * as THREE from 'three';
-import { Cabin, CabinCustomization } from '../rules.ts';
+import { Cabin, CabinCustomization, PlacedDecoration } from '../rules.ts';
 import { createWoodTexture } from './textures.ts';
+import { createDecorMesh } from './townDecor.ts';
 
 export interface CabinVisualInstance {
   cabin: Cabin;
   root: THREE.Group;
+  decorationsGroup: THREE.Group;
   wallMesh: THREE.Mesh;
   roofMesh: THREE.Mesh;
   doorMesh: THREE.Mesh;
@@ -21,6 +18,7 @@ export interface CabinVisualInstance {
   porchGarland: THREE.Mesh;
   updateCustomization: (custom: CabinCustomization) => void;
   setDiscovered: (discovered: boolean) => void;
+  syncPlacedDecorations: (decorations: PlacedDecoration[]) => void;
 }
 
 const WALL_TINTS: Record<string, string> = {
@@ -282,9 +280,30 @@ export function createCabinModel(cabin: Cabin): CabinVisualInstance {
     (porchGarland.material as THREE.MeshStandardMaterial).emissiveIntensity = discovered ? 0.8 : 0;
   };
 
+  // Placed Decorations Sub-group
+  const decorationsGroup = new THREE.Group();
+  root.add(decorationsGroup);
+
+  const syncPlacedDecorations = (decorations: PlacedDecoration[]) => {
+    // Clear old children
+    while (decorationsGroup.children.length > 0) {
+      const child = decorationsGroup.children[0];
+      decorationsGroup.remove(child);
+    }
+
+    // Add new meshes relative to cabin root
+    decorations.forEach((d) => {
+      const mesh = createDecorMesh(d.itemId);
+      mesh.position.set(d.x - cabin.x, d.y, d.z - cabin.z);
+      mesh.rotation.y = d.rotationY;
+      decorationsGroup.add(mesh);
+    });
+  };
+
   return {
     cabin,
     root,
+    decorationsGroup,
     wallMesh,
     roofMesh,
     doorMesh,
@@ -296,5 +315,6 @@ export function createCabinModel(cabin: Cabin): CabinVisualInstance {
     porchGarland,
     updateCustomization,
     setDiscovered,
+    syncPlacedDecorations,
   };
 }

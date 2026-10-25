@@ -5,82 +5,138 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { SnowGrid, updatePloughKinematics, INITIAL_CABINS } from './rules.ts';
+import {
+  SnowGrid,
+  updatePloughKinematics,
+  advanceWeatherSystem,
+  INITIAL_CABINS,
+  INITIAL_WEATHER,
+  INITIAL_WEATHER_FORECAST,
+  INITIAL_UPGRADES,
+  WeatherCondition,
+} from './rules.ts';
 
-test('SnowGrid initializes with deep snow and road cells', () => {
+test('SnowGrid simulates continuous snowfall accumulation', () => {
   const grid = new SnowGrid(32, 100);
-  assert.equal(grid.depths.length, 32 * 32);
+  const beforeDepth = grid.getSnowInfoAt(0, 0).depth;
 
-  // Center town square is marked as road
-  const center = grid.worldToGrid(0, 0);
-  const centerIdx = grid.getIndex(center.gx, center.gz);
-  assert.equal(grid.isRoad[centerIdx], 1);
+  const heavySnow: WeatherCondition = {
+    ...INITIAL_WEATHER,
+    type: 'heavy_snow',
+    snowfallRate: 0.05, // 0.05m per sec
+    temperature: -5,
+  };
 
-  // Initial depth is high
-  assert.ok(grid.depths[centerIdx] > 0.5);
+  grid.simulateWeatherStep(heavySnow, 2.0); // 2 seconds
+
+  const afterDepth = grid.getSnowInfoAt(0, 0).depth;
+  assert.ok(afterDepth > beforeDepth, 'Snow depth must increase with snowfall');
 });
 
-test('ploughSnowAt clears snow along blade and awards points', () => {
+test('Freezing rain generates black ice glaze', () => {
   const grid = new SnowGrid(32, 100);
-  const initialDepth = grid.getSnowDepthAt(0, 0);
+  const beforeIce = grid.getSnowInfoAt(0, 0).ice;
 
-  const result = grid.ploughSnowAt(0, 0, 0, 4.0, 1.0);
+  const rain: WeatherCondition = {
+    ...INITIAL_WEATHER,
+    type: 'freezing_rain',
+    snowfallRate: 0.001,
+    temperature: -1.0,
+  };
+
+  grid.simulateWeatherStep(rain, 3.0);
+
+  const afterIce = grid.getSnowInfoAt(0, 0).ice;
+  assert.ok(afterIce > beforeIce, 'Ice glaze must accumulate during freezing rain');
+});
+
+test('Plough pushes snow into physical side snowbanks', () => {
+  const grid = new SnowGrid(32, 100);
+
+  // Clear along center line
+  const result = grid.ploughSnowAt(0, 0, 0, 3.4, INITIAL_UPGRADES, false);
   assert.ok(result.displacedVolume > 0, 'Displaced snow should be positive');
-  assert.ok(result.pointsEarned > 0, 'Points earned should be positive');
 
-  const afterDepth = grid.getSnowDepthAt(0, 0);
-  assert.ok(afterDepth < initialDepth, 'Snow depth at blade should be reduced');
+  // Verify that roadside berm cells received displaced snow
+  const sideSnow = grid.getSnowInfoAt(3.0, 0); // ~3m to the side
+  assert.ok(sideSnow.depth > 0, 'Side cells should receive displaced snow berm');
 });
 
-test('getClearanceStats calculates percentages correctly', () => {
-  const grid = new SnowGrid(32, 100);
-  const statsBefore = grid.getClearanceStats();
-  assert.ok(statsBefore.totalRoadCells > 0);
-  assert.equal(statsBefore.roadClearancePct, 0);
-
-  // Plough extensively at center
-  for (let i = 0; i < 10; i++) {
-    grid.ploughSnowAt(0, 0, 0, 8.0, 1.0);
-  }
-
-  const statsAfter = grid.getClearanceStats();
-  assert.ok(statsAfter.clearedRoadCells > 0);
-});
-
-test('updatePloughKinematics accelerates, steers, and obeys snow drag', () => {
-  const initialVehicle = {
+test('Ice reduces vehicle traction and tyre upgrades improve grip', () => {
+  const standardVehicle = {
     x: 0,
     z: 0,
     angle: 0,
-    speed: 0,
+    speed: 5.0,
     steerAngle: 0,
-    bladeLowered: true,
-    saltSpreader: false,
+    bladeLowered: false,
+    saltSpreaderActive: false,
+    upgrades: INITIAL_UPGRADES,
   };
 
-  // Accelerate forward with blade lowered in deep snow (drag is higher)
-  const moved = updatePloughKinematics(
-    initialVehicle,
-    { forward: true, backward: false, left: false, right: false, brake: false, boost: false },
-    0.9,
+  // Normal powder surface
+  const powderMoved = updatePloughKinematics(
+    standardVehicle,
+    { forward: true, backward: false, left: true, right: false, brake: false, boost: false },
+    { depth: 0.2, type: 'powder', ice: 0 },
+    1.0,
     0.1
   );
 
-  assert.ok(moved.speed > 0, 'Vehicle should accelerate forward');
-  assert.ok(moved.z > 0, 'Vehicle heading should move along Z');
-
-  // Steering right
-  const steered = updatePloughKinematics(
-    moved,
-    { forward: true, backward: false, left: false, right: true, brake: false, boost: false },
-    0.2,
+  // Ice surface without chains
+  const iceMoved = updatePloughKinematics(
+    standardVehicle,
+    { forward: true, backward: false, left: true, right: false, brake: false, boost: false },
+    { depth: 0.2, type: 'ice', ice: 0.8 },
+    1.0,
     0.1
   );
-  assert.ok(steered.steerAngle > 0, 'Steering angle should turn right');
+
+  assert.ok(
+    Math.abs(iceMoved.steerAngle) < Math.abs(powderMoved.steerAngle),
+    'Vehicle on ice must have reduced steering authority/slip'
+  );
+
+  // Upgraded tyres with diamond chains
+  const chainedVehicle = {
+    ...standardVehicle,
+    upgrades: { ...INITIAL_UPGRADES, tyresLevel: 2 },
+  };
+
+  const chainedMoved = updatePloughKinematics(
+    chainedVehicle,
+    { forward: true, backward: false, left: true, right: false, brake: false, boost: false },
+    { depth: 0.2, type: 'ice', ice: 0.8 },
+    1.0,
+    0.1
+  );
+
+  assert.ok(
+    Math.abs(chainedMoved.steerAngle) > Math.abs(iceMoved.steerAngle),
+    'Tyre chains must significantly improve steering response on ice'
+  );
 });
 
-test('Cabin configuration contains 5 unique festive chalets', () => {
-  assert.equal(INITIAL_CABINS.length, 5);
-  const ids = new Set(INITIAL_CABINS.map((c) => c.id));
-  assert.equal(ids.size, 5, 'All cabin IDs must be distinct');
+test('Dynamic weather system advances and transitions when timer expires', () => {
+  const initial = { ...INITIAL_WEATHER, timeRemaining: 1.0 };
+  const forecast = [...INITIAL_WEATHER_FORECAST];
+
+  const advanced = advanceWeatherSystem(initial, forecast, 2.0);
+  assert.equal(advanced.eventChanged, true, 'Weather should transition when time expires');
+  assert.equal(advanced.weather.type, 'heavy_snow', 'Next forecast event should become active');
+});
+
+test('Serialization and deserialization preserve grid depth and ice state', () => {
+  const grid = new SnowGrid(16, 50);
+  grid.depths[10] = 1.25;
+  grid.iceGlaze[10] = 0.75;
+  grid.types[10] = 3;
+
+  const data = grid.serialize();
+  const restoredGrid = new SnowGrid(16, 50);
+  restoredGrid.deserialize(data);
+
+  assert.equal(Math.round(restoredGrid.depths[10] * 100), 125);
+  assert.equal(Math.round(restoredGrid.iceGlaze[10] * 100), 75);
+  assert.equal(restoredGrid.types[10], 3);
 });
